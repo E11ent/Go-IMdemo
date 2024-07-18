@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"sync"
@@ -38,14 +39,33 @@ func (server *Server) boardCast(user *User, msg string) {
 }
 
 func (server *Server) handleConnection(conn net.Conn) {
-	fmt.Println("链接创建成功")
-	server.mapLock.Lock()
-	user := NewUser(conn)
-	server.onlineMap[user.Name] = user
-	server.mapLock.Unlock()
 
-	server.boardCast(user, "is online")
-	fmt.Println("消息发送成功")
+	user := NewUser(conn, server)
+	user.Online()
+
+	go func() {
+		var msg string
+		for {
+			buf := make([]byte, 2)
+			n, err := conn.Read(buf)
+			fmt.Println("n==", n)
+			if n == 0 {
+				user.Offline()
+				return
+			}
+			if err != nil && err != io.EOF {
+				return
+			}
+			str := string(buf)
+			if str != "\r\n" {
+				msg += str
+			} else {
+				user.DoMessage(msg)
+				msg = ""
+			}
+
+		}
+	}()
 
 }
 
