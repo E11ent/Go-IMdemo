@@ -6,6 +6,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -42,7 +43,7 @@ func (server *Server) handleConnection(conn net.Conn) {
 
 	user := NewUser(conn, server)
 	user.Online()
-
+	isALive := make(chan bool)
 	go func() {
 		var msg string
 		for {
@@ -58,14 +59,26 @@ func (server *Server) handleConnection(conn net.Conn) {
 			}
 			str := string(buf)
 			if str != "\r\n" {
-				msg += str
+				msg += str[:n]
 			} else {
+				isALive <- true
 				user.DoMessage(msg)
 				msg = ""
 			}
 
 		}
 	}()
+
+	for {
+		select {
+		case <-isALive:
+		case <-time.After(time.Second * 30):
+			user.server.mapLock.Lock()
+			delete(user.server.onlineMap, user.Name)
+			user.server.mapLock.Unlock()
+			conn.Close()
+		}
+	}
 
 }
 
